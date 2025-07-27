@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bread Banking Planner</title>
+    <style>
+        body {
+            display: flex;
+            font-family: Arial, sans-serif;
+        }
+        #sidebar {
+            width: 200px;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        #main-content {
+            flex-grow: 1;
+            padding: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h2>Recipes</h2>
+        <select id="recipe-selector" size="5">
+            <!-- Recipes will be dynamically populated here -->
+        </select>
+        <button onclick="loadSelectedRecipe()">Load Recipe</button>
+        <button onclick="deleteSelectedRecipe()">Delete Recipe</button>
+    </div>
+
+    <div id="main-content">
+        <h1>Bread Banking Planner</h1>
+        
+        <div id="recipe-name-input">
+            <input type="text" id="recipe-name" placeholder="Recipe Name">
+            <button onclick="saveRecipe()">Save Recipe</button>
+        </div>
+
+        <div id="step-input">
+            <input type="text" id="stage-name" placeholder="Stage Name">
+            <input type="text" id="stage-duration" placeholder="Duration (HH:MM)">
+            <button onclick="addStage()">Add Stage</button>
+        </div>
+
+        <div id="start-time-input">
+            <input type="datetime-local" id="start-time">
+            <button onclick="calculateStepTimes()">Calculate Times</button>
+        </div>
+
+        <table id="stages-table">
+            <thead>
+                <tr>
+                    <th>Stage</th>
+                    <th>Duration</th>
+                    <th>Start Time</th>
+                </tr>
+            </thead>
+            <tbody id="stages-body">
+                <!-- Stages will be dynamically added here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let currentRecipe = {
+            name: '',
+            stages: []
+        };
+
+        function addStage() {
+            const stageName = document.getElementById('stage-name').value;
+            const stageDuration = document.getElementById('stage-duration').value;
+            
+            if (stageName && stageDuration) {
+                currentRecipe.stages.push({
+                    name: stageName,
+                    duration: stageDuration,
+                    startTime: null
+                });
+                
+                updateStagesTable();
+                
+                // Clear inputs
+                document.getElementById('stage-name').value = '';
+                document.getElementById('stage-duration').value = '';
+            }
+        }
+
+        function updateStagesTable() {
+            const stagesBody = document.getElementById('stages-body');
+            stagesBody.innerHTML = '';
+            
+            currentRecipe.stages.forEach((stage, index) => {
+                const row = stagesBody.insertRow();
+                row.insertCell(0).textContent = stage.name;
+                row.insertCell(1).textContent = stage.duration;
+                row.insertCell(2).textContent = stage.startTime || '';
+            });
+        }
+
+        function calculateStepTimes() {
+            const startTime = new Date(document.getElementById('start-time').value);
+            
+            let currStartTime = startTime;
+
+            currentRecipe.stages.forEach((stage, index) => {
+                // Parse duration
+                const [hours, minutes] = stage.duration.split(':').map(Number);
+                
+                // Calculate start time for each stage
+                if (index === 0) {
+                    stage.startTime = startTime.toLocaleString();
+                } else {
+                    // Calculate cumulative duration
+                    const prevStage = currentRecipe.stages[index - 1];
+                    const [prevHours, prevMinutes] = prevStage.duration.split(':').map(Number);
+                    
+                    // Create a new date by adding previous stage's duration
+                    currStartTime.setHours(currStartTime.getHours() + prevHours);
+                    currStartTime.setMinutes(currStartTime.getMinutes() + prevMinutes);
+                    
+                    stage.startTime = currStartTime.toLocaleString();
+                }
+            });
+            
+            updateStagesTable();
+        }
+
+        function saveRecipe() {
+            const recipeName = document.getElementById('recipe-name').value;
+            
+            if (recipeName && currentRecipe.stages.length > 0) {
+                currentRecipe.name = recipeName;
+                
+                // Save to local storage
+                let recipes = JSON.parse(localStorage.getItem('breadRecipes') || '[]');
+                
+                // Check if recipe already exists
+                const existingRecipeIndex = recipes.findIndex(r => r.name === recipeName);
+                
+                if (existingRecipeIndex !== -1) {
+                    // Update existing recipe
+                    recipes[existingRecipeIndex] = currentRecipe;
+                } else {
+                    // Add new recipe
+                    recipes.push(currentRecipe);
+                }
+                
+                localStorage.setItem('breadRecipes', JSON.stringify(recipes));
+                
+                // Update recipe selector
+                updateRecipeSelector();
+            }
+        }
+
+        function updateRecipeSelector() {
+            const recipeSelector = document.getElementById('recipe-selector');
+            const recipes = JSON.parse(localStorage.getItem('breadRecipes') || '[]');
+            
+            recipeSelector.innerHTML = '';
+            
+            recipes.forEach(recipe => {
+                const option = document.createElement('option');
+                option.value = recipe.name;
+                option.textContent = recipe.name;
+                recipeSelector.appendChild(option);
+            });
+        }
+
+        function loadSelectedRecipe() {
+            const recipeSelector = document.getElementById('recipe-selector');
+            const selectedRecipeName = recipeSelector.value;
+            
+            if (selectedRecipeName) {
+                const recipes = JSON.parse(localStorage.getItem('breadRecipes') || '[]');
+                const recipe = recipes.find(r => r.name === selectedRecipeName);
+                
+                if (recipe) {
+                    currentRecipe = {...recipe};
+                    
+                    // Set recipe name
+                    document.getElementById('recipe-name').value = currentRecipe.name;
+                    
+                    // Update stages table
+                    updateStagesTable();
+                }
+            }
+        }
+
+        function deleteSelectedRecipe() {
+            const recipeSelector = document.getElementById('recipe-selector');
+            const selectedRecipeName = recipeSelector.value;
+            
+            if (selectedRecipeName) {
+                let recipes = JSON.parse(localStorage.getItem('breadRecipes') || '[]');
+                
+                // Remove the recipe
+                recipes = recipes.filter(r => r.name !== selectedRecipeName);
+                
+                localStorage.setItem('breadRecipes', JSON.stringify(recipes));
+                
+                // Reset current recipe and UI
+                currentRecipe = { name: '', stages: [] };
+                document.getElementById('recipe-name').value = '';
+                updateStagesTable();
+                updateRecipeSelector();
+            }
+        }
+
+        // Initialize recipe selector on page load
+        window.onload = updateRecipeSelector;
+    </script>
+</body>
+</html>
