@@ -1,0 +1,19 @@
+{
+  "name": "breads",
+  "version": "1.0.0",
+  "description": "A simple web application to help bakers plan and track bread recipe stages with precise timing and push notifications.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "web-push": "^3.6.7"
+  }
+}

@@ -1,0 +1,161 @@
+const express = require('express');
+const webpush = require('web-push');
+const cors = require('cors');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Generate VAPID keys for secure push notifications
+// In production, these should be stored in environment variables
+const vapidKeys = {
+    publicKey: process.env.VAPID_PUBLIC_KEY || 'BMuo9urQs3EuP6h224RIbk90TYEI3heIdMCX-gNuFO-eov7fKTBrfD4EpxBNTyIwxIM1JTmxxo8U_-llSza0CTs',
+    privateKey: process.env.VAPID_PRIVATE_KEY || 'oJIbqmKTzXzm-jFLJPvDsM0G8_6TU9hXLVuICsJeog8'
+};
+
+// Configure web-push with VAPID details
+webpush.setVapidDetails(
+    'mailto:breads@example.com',
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
+);
+
+// Store subscriptions in memory (in production, use a database)
+const subscriptions = new Map();
+
+// Endpoint to get VAPID public key
+app.get('/api/vapid-public-key', (req, res) => {
+    res.json({ publicKey: vapidKeys.publicKey });
+});
+
+// Endpoint to subscribe to push notifications
+app.post('/api/subscribe', (req, res) => {
+    const subscription = req.body;
+    
+    if (!subscription || !subscription.endpoint) {
+        return res.status(400).json({ error: 'Invalid subscription' });
+    }
+    
+    // Store the subscription using endpoint as key
+    const subscriptionId = Buffer.from(subscription.endpoint).toString('base64').slice(0, 32);
+    subscriptions.set(subscriptionId, subscription);
+    
+    console.log('New subscription registered:', subscriptionId);
+    res.status(201).json({ message: 'Subscription registered successfully', id: subscriptionId });
+});
+
+// Endpoint to unsubscribe from push notifications
+app.post('/api/unsubscribe', (req, res) => {
+    const { endpoint } = req.body;
+    
+    if (!endpoint) {
+        return res.status(400).json({ error: 'Endpoint is required' });
+    }
+    
+    const subscriptionId = Buffer.from(endpoint).toString('base64').slice(0, 32);
+    subscriptions.delete(subscriptionId);
+    
+    console.log('Subscription removed:', subscriptionId);
+    res.json({ message: 'Unsubscribed successfully' });
+});
+
+// Endpoint to schedule a notification for a recipe stage
+app.post('/api/schedule-notification', async (req, res) => {
+    const { subscriptionId, stageName, startTime, delay } = req.body;
+    
+    if (!subscriptionId || !stageName || !startTime) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const subscription = subscriptions.get(subscriptionId);
+    
+    if (!subscription) {
+        return res.status(404).json({ error: 'Subscription not found' });
+    }
+    
+    const notificationPayload = JSON.stringify({
+        title: '🍞 Bread Stage Reminder',
+        body: `Time to start: ${stageName}`,
+        icon: '/bread-icon.png',
+        data: {
+            stageName,
+            startTime
+        }
+    });
+    
+    // Calculate delay until notification should be sent
+    const notifyAt = new Date(startTime);
+    const now = new Date();
+    const delayMs = Math.max(0, notifyAt.getTime() - now.getTime() - (delay || 0) * 60 * 1000);
+    
+    if (delayMs > 0) {
+        // Schedule the notification
+        setTimeout(async () => {
+            try {
+                await webpush.sendNotification(subscription, notificationPayload);
+                console.log('Scheduled notification sent for:', stageName);
+            } catch (error) {
+                console.error('Error sending scheduled notification:', error);
+                if (error.statusCode === 410) {
+                    // Subscription has expired or is no longer valid
+                    subscriptions.delete(subscriptionId);
+                }
+            }
+        }, delayMs);
+        
+        res.json({ message: `Notification scheduled for ${stageName}`, scheduledAt: notifyAt });
+    } else {
+        // Send immediately if the time has passed
+        try {
+            await webpush.sendNotification(subscription, notificationPayload);
+            res.json({ message: 'Notification sent immediately', stageName });
+        } catch (error) {
+            console.error('Error sending notification:', error);
+            res.status(500).json({ error: 'Failed to send notification' });
+        }
+    }
+});
+
+// Endpoint to send a test notification
+app.post('/api/test-notification', async (req, res) => {
+    const { subscriptionId } = req.body;
+    
+    if (!subscriptionId) {
+        return res.status(400).json({ error: 'Subscription ID is required' });
+    }
+    
+    const subscription = subscriptions.get(subscriptionId);
+    
+    if (!subscription) {
+        return res.status(404).json({ error: 'Subscription not found' });
+    }
+    
+    const notificationPayload = JSON.stringify({
+        title: '🍞 Bread Banking Planner',
+        body: 'Push notifications are working!',
+        icon: '/bread-icon.png'
+    });
+    
+    try {
+        await webpush.sendNotification(subscription, notificationPayload);
+        res.json({ message: 'Test notification sent successfully' });
+    } catch (error) {
+        console.error('Error sending test notification:', error);
+        res.status(500).json({ error: 'Failed to send notification' });
+    }
+});
+
+// Serve the main HTML file
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`VAPID Public Key: ${vapidKeys.publicKey}`);
+});
