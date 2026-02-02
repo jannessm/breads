@@ -3,13 +3,34 @@ const webpush = require('web-push');
 const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Rate limiting to prevent abuse
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per windowMs
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' }
+});
+
+// Apply rate limiting to all API routes
+const apiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 30, // Limit each IP to 30 API requests per minute
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many API requests, please try again later.' }
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(limiter);
+app.use('/api', apiLimiter);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // VAPID keys for secure push notifications
