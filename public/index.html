@@ -485,7 +485,10 @@
                 
                 const nameCell = row.insertCell(0);
                 nameCell.className = 'py-4 px-6';
-                nameCell.innerHTML = `<span class="font-medium text-amber-900">${stage.name}</span>`;
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'font-medium text-amber-900';
+                nameSpan.textContent = stage.name;
+                nameCell.appendChild(nameSpan);
                 
                 const durationCell = row.insertCell(1);
                 durationCell.className = 'py-4 px-6 text-gray-600';
@@ -494,16 +497,19 @@
                 const timeCell = row.insertCell(2);
                 timeCell.className = 'py-4 px-6';
                 if (stage.startTime) {
-                    timeCell.innerHTML = `<span class="bg-green-100 text-green-800 py-1 px-3 rounded-full text-sm font-medium">${stage.startTime}</span>`;
+                    const timeSpan = document.createElement('span');
+                    timeSpan.className = 'bg-green-100 text-green-800 py-1 px-3 rounded-full text-sm font-medium';
+                    timeSpan.textContent = stage.startTime;
+                    timeCell.appendChild(timeSpan);
                 }
                 
                 const actionsCell = row.insertCell(3);
                 actionsCell.className = 'py-4 px-6 text-center';
-                actionsCell.innerHTML = `
-                    <button onclick="removeStage(${index})" class="text-red-600 hover:text-red-800 font-medium">
-                        🗑️ Remove
-                    </button>
-                `;
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'text-red-600 hover:text-red-800 font-medium';
+                removeBtn.textContent = '🗑️ Remove';
+                removeBtn.onclick = () => removeStage(index);
+                actionsCell.appendChild(removeBtn);
             });
         }
 

@@ -2,6 +2,7 @@ const express = require('express');
 const webpush = require('web-push');
 const cors = require('cors');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,8 +12,15 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Generate VAPID keys for secure push notifications
-// In production, these should be stored in environment variables
+// VAPID keys for secure push notifications
+// These MUST be set via environment variables in production
+// Generate new keys with: npx web-push generate-vapid-keys
+if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    console.warn('WARNING: VAPID keys not set in environment variables.');
+    console.warn('For development, default keys will be used.');
+    console.warn('In production, set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY environment variables.');
+}
+
 const vapidKeys = {
     publicKey: process.env.VAPID_PUBLIC_KEY || 'BMuo9urQs3EuP6h224RIbk90TYEI3heIdMCX-gNuFO-eov7fKTBrfD4EpxBNTyIwxIM1JTmxxo8U_-llSza0CTs',
     privateKey: process.env.VAPID_PRIVATE_KEY || 'oJIbqmKTzXzm-jFLJPvDsM0G8_6TU9hXLVuICsJeog8'
@@ -28,6 +36,11 @@ webpush.setVapidDetails(
 // Store subscriptions in memory (in production, use a database)
 const subscriptions = new Map();
 
+// Helper function to generate a secure subscription ID
+function generateSubscriptionId(endpoint) {
+    return crypto.createHash('sha256').update(endpoint).digest('hex');
+}
+
 // Endpoint to get VAPID public key
 app.get('/api/vapid-public-key', (req, res) => {
     res.json({ publicKey: vapidKeys.publicKey });
@@ -41,11 +54,11 @@ app.post('/api/subscribe', (req, res) => {
         return res.status(400).json({ error: 'Invalid subscription' });
     }
     
-    // Store the subscription using endpoint as key
-    const subscriptionId = Buffer.from(subscription.endpoint).toString('base64').slice(0, 32);
+    // Store the subscription using a secure hash of the endpoint
+    const subscriptionId = generateSubscriptionId(subscription.endpoint);
     subscriptions.set(subscriptionId, subscription);
     
-    console.log('New subscription registered:', subscriptionId);
+    console.log('New subscription registered:', subscriptionId.substring(0, 16) + '...');
     res.status(201).json({ message: 'Subscription registered successfully', id: subscriptionId });
 });
 
@@ -57,7 +70,7 @@ app.post('/api/unsubscribe', (req, res) => {
         return res.status(400).json({ error: 'Endpoint is required' });
     }
     
-    const subscriptionId = Buffer.from(endpoint).toString('base64').slice(0, 32);
+    const subscriptionId = generateSubscriptionId(endpoint);
     subscriptions.delete(subscriptionId);
     
     console.log('Subscription removed:', subscriptionId);
@@ -89,12 +102,15 @@ app.post('/api/schedule-notification', async (req, res) => {
     });
     
     // Calculate delay until notification should be sent
+    // We subtract the "notify before" time so users get notified ahead of the stage start
     const notifyAt = new Date(startTime);
     const now = new Date();
     const delayMs = Math.max(0, notifyAt.getTime() - now.getTime() - (delay || 0) * 60 * 1000);
     
     if (delayMs > 0) {
-        // Schedule the notification
+        // Schedule the notification using setTimeout
+        // Note: In production, consider using a persistent job queue (e.g., Bull, Agenda)
+        // as setTimeout-based scheduling is lost on server restart
         setTimeout(async () => {
             try {
                 await webpush.sendNotification(subscription, notificationPayload);
